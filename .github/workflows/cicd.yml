@@ -13,34 +13,34 @@ env:
 
 jobs:
   lint-and-format:
-    name: 🧹 Code Quality & Formatting
+    name:  Code Quality & Formatting
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name:  Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: 📦 Install dependencies
+      - name:  Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: 🎨 Check code formatting with Black
+      - name:  Check code formatting with Black
         run: black --check --diff app/ tests/
 
-      - name: 📏 Check import sorting with isort
+      - name:  Check import sorting with isort
         run: isort --check-only --diff app/ tests/
 
-      - name: 🔍 Lint with flake8
+      - name: Lint with flake8
         run: flake8 app/ tests/ --max-line-length=88 --extend-ignore=E203,W503
 
   test:
-    name: 🧪 Run Tests
+    name:  Run Tests
     runs-on: ubuntu-latest
     needs: lint-and-format
     strategy:
@@ -48,25 +48,25 @@ jobs:
         python-version: ['3.10', '3.11', '3.12']
     
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python ${{ matrix.python-version }}
+      - name:  Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: 📦 Install dependencies
+      - name:  Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: 🧪 Run tests with pytest
+      - name:  Run tests with pytest
         run: |
           pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
 
-      - name: 📈 Upload test results
+      - name:  Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -77,24 +77,24 @@ jobs:
           if-no-files-found: ignore
 
   security-scan:
-    name: 🔒 Security Scanning
+    name:  Security Scanning
     runs-on: ubuntu-latest
     needs: lint-and-format
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name:  Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 🔍 Run safety check
+      - name:  Run safety check
         run: |
           pip install safety
           safety check --json --output safety-report.json || true
 
-      - name: 📊 Upload security scan results
+      - name:  Upload security scan results
         uses: actions/upload-artifact@v4
         with:
           name: security-scan
@@ -102,7 +102,7 @@ jobs:
           if-no-files-found: ignore
 
   build:
-    name: 🏗️ Build Application
+    name:  Build Application
     runs-on: ubuntu-latest
     needs: [test, security-scan]
     outputs:
@@ -110,13 +110,13 @@ jobs:
       image-digest: ${{ steps.build.outputs.digest }}
     
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 🐳 Set up Docker Buildx
+      - name:  Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🏷️ Extract metadata
+      - name:  Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -127,7 +127,7 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: 🏗️ Build Docker image
+      - name:  Build Docker image
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -140,7 +140,7 @@ jobs:
           cache-to: type=gha,mode=max
           outputs: type=docker,dest=/tmp/image.tar
 
-      - name: 📦 Upload Docker image
+      - name:  Upload Docker image
         uses: actions/upload-artifact@v4
         with:
           name: docker-image
@@ -148,30 +148,30 @@ jobs:
           retention-days: 1
 
   deploy-staging:
-    name: 🚀 Deploy to Staging
+    name:  Deploy to Staging
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     environment:
       name: staging
       url: http://localhost:8001
     
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 📦 Download Docker image
+      - name:  Download Docker image
         uses: actions/download-artifact@v4
         with:
           name: docker-image
           path: /tmp
 
-      - name: 🐳 Load Docker image
+      - name:  Load Docker image
         run: docker load --input /tmp/image.tar
 
-      - name: 🏃 Deploy to staging
+      - name:  Deploy to staging
         run: |
-          echo "🚀 Deploying to staging environment..."
+          echo " Deploying to staging environment..."
           
           docker stop cicd-demo-staging || true
           docker rm cicd-demo-staging || true
@@ -183,25 +183,25 @@ jobs:
             -e ENV=staging \
             cicd-demo-app:latest
           
-          echo "⏳ Waiting for application to be ready..."
+          echo " Waiting for application to be ready..."
           for i in {1..30}; do
             if curl -f http://localhost:8001/health >/dev/null 2>&1; then
-              echo "✅ Staging deployment successful!"
+              echo " Staging deployment successful!"
               break
             fi
-            echo "⏳ Attempt $i/30 - waiting for health check..."
+            echo " Attempt $i/30 - waiting for health check..."
             sleep 2
           done
 
-      - name: 🧪 Run smoke tests
+      - name:  Run smoke tests
         run: |
-          echo "🧪 Running smoke tests against staging..."
+          echo " Running smoke tests against staging..."
           curl -f http://localhost:8001/health
           curl -f http://localhost:8001/
-          echo "✅ Smoke tests passed!"
+          echo " Smoke tests passed!"
 
   deploy-production:
-    name: 🌟 Deploy to Production
+    name:  Deploy to Production
     runs-on: ubuntu-latest
     needs: [build, deploy-staging]
     if: github.ref == 'refs/heads/main'
@@ -210,21 +210,21 @@ jobs:
       url: http://localhost:3000
     
     steps:
-      - name: 📥 Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: 📦 Download Docker image
+      - name:  Download Docker image
         uses: actions/download-artifact@v4
         with:
           name: docker-image
           path: /tmp
 
-      - name: 🐳 Load Docker image
+      - name:  Load Docker image
         run: docker load --input /tmp/image.tar
 
-      - name: 🌟 Deploy to production
+      - name:  Deploy to production
         run: |
-          echo "🌟 Deploying to production environment..."
+          echo " Deploying to production environment..."
           
           docker stop cicd-demo-production || true
           docker rm cicd-demo-production || true
@@ -236,37 +236,37 @@ jobs:
             -e ENV=production \
             cicd-demo-app:latest
           
-          echo "⏳ Waiting for application to be ready..."
+          echo " Waiting for application to be ready..."
           for i in {1..30}; do
             if curl -f http://localhost:3000/health >/dev/null 2>&1; then
-              echo "✅ Production deployment successful!"
+              echo " Production deployment successful!"
               break
             fi
-            echo "⏳ Attempt $i/30 - waiting for health check..."
+            echo " Attempt $i/30 - waiting for health check..."
             sleep 2
           done
 
-      - name: 🧪 Run production smoke tests
+      - name:  Run production smoke tests
         run: |
-          echo "🧪 Running production smoke tests..."
+          echo " Running production smoke tests..."
           curl -f http://localhost:3000/health
           curl -f http://localhost:3000/
-          echo "✅ Production smoke tests passed!"
+          echo " Production smoke tests passed!"
 
-      - name: 📢 Notify deployment success
+      - name:  Notify deployment success
         if: success()
         run: |
-          echo "🎉 Production deployment completed successfully!"
-          echo "📊 Deployment Summary:"
+          echo " Production deployment completed successfully!"
+          echo " Deployment Summary:"
           echo "- Version: ${{ github.sha }}"
           echo "- Branch: ${{ github.ref }}"
           echo "- URL: http://localhost:3000"
 
   cleanup:
-    name: 🧹 Cleanup
+    name:  Cleanup
     runs-on: ubuntu-latest
     needs: [deploy-staging, deploy-production]
     if: always()
     steps:
-      - name: 🧹 Clean up artifacts
-        run: echo "🧹 Cleaning up temporary artifacts..."
+      - name:  Clean up artifacts
+        run: echo " Cleaning up temporary artifacts..." 
