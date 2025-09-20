@@ -1,0 +1,305 @@
+# .github/workflows/cicd.yml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # ============================================================================
+  # CONTINUOUS INTEGRATION
+  # ============================================================================
+  
+  lint-and-format:
+    name: 🧹 Code Quality & Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 🎨 Check code formatting with Black
+        run: black --check --diff app/ tests/
+
+      - name: 📏 Check import sorting with isort
+        run: isort --check-only --diff app/ tests/
+
+      - name: 🔍 Lint with flake8
+        run: flake8 app/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+      - name: 📊 Upload lint results
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: lint-results
+          path: |
+            lint-results.txt
+
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 🧪 Run tests with pytest
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: 📊 Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: 📈 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+
+  security-scan:
+    name: 🔒 Security Scanning
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 🔍 Run safety check
+        run: |
+          pip install safety
+          safety check --json --output safety-report.json || true
+
+      - name: 📊 Upload security scan results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan
+          path: safety-report.json
+
+  build:
+    name: 🏗️ Build Application
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: cicd-demo-app
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 🏗️ Build Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/image.tar
+
+      - name: 📦 Upload Docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  # ============================================================================
+  # CONTINUOUS DEPLOYMENT
+  # ============================================================================
+
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: staging
+      url: http://localhost:8001
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Download Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: 🐳 Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: 🏃 Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          
+          # Stop existing staging container if running
+          docker stop cicd-demo-staging || true
+          docker rm cicd-demo-staging || true
+          
+          # Run new container
+          docker run -d \
+            --name cicd-demo-staging \
+            --restart unless-stopped \
+            -p 8001:3000 \
+            -e ENV=staging \
+            cicd-demo-app:latest
+          
+          # Health check
+          echo "⏳ Waiting for application to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8001/health >/dev/null 2>&1; then
+              echo "✅ Staging deployment successful!"
+              break
+            fi
+            echo "⏳ Attempt $i/30 - waiting for health check..."
+            sleep 2
+          done
+
+      - name: 🧪 Run smoke tests
+        run: |
+          echo "🧪 Running smoke tests against staging..."
+          curl -f http://localhost:8001/health
+          curl -f http://localhost:8001/
+          echo "✅ Smoke tests passed!"
+
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: http://localhost:3000
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Download Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: 🐳 Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: 🌟 Deploy to production
+        run: |
+          echo "🌟 Deploying to production environment..."
+          
+          # Blue-Green deployment simulation
+          docker stop cicd-demo-production || true
+          docker rm cicd-demo-production || true
+          
+          # Deploy new version
+          docker run -d \
+            --name cicd-demo-production \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -e ENV=production \
+            cicd-demo-app:latest
+          
+          # Health check
+          echo "⏳ Waiting for application to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:3000/health >/dev/null 2>&1; then
+              echo "✅ Production deployment successful!"
+              break
+            fi
+            echo "⏳ Attempt $i/30 - waiting for health check..."
+            sleep 2
+          done
+
+      - name: 🧪 Run production smoke tests
+        run: |
+          echo "🧪 Running production smoke tests..."
+          curl -f http://localhost:3000/health
+          curl -f http://localhost:3000/
+          echo "✅ Production smoke tests passed!"
+
+      - name: 📢 Notify deployment success
+        if: success()
+        run: |
+          echo "🎉 Production deployment completed successfully!"
+          echo "📊 Deployment Summary:"
+          echo "- Version: ${{ github.sha }}"
+          echo "- Branch: ${{ github.ref }}"
+          echo "- URL: http://localhost:3000"
+
+  # ============================================================================
+  # POST-DEPLOYMENT
+  # ============================================================================
+
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    steps:
+      - name: 🧹 Clean up artifacts
+        run: echo "🧹 Cleaning up temporary artifacts..."
