@@ -1,22 +1,17 @@
-# .github/workflows/cicd.yml
+# .github/workflows/cicd.yml - FIXED VERSION
 name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: '3.11'
-  NODE_VERSION: '18'
 
 jobs:
-  # ============================================================================
-  # CONTINUOUS INTEGRATION
-  # ============================================================================
-  
   lint-and-format:
     name: 🧹 Code Quality & Formatting
     runs-on: ubuntu-latest
@@ -25,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -46,7 +41,7 @@ jobs:
 
       - name: 📊 Upload lint results
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: lint-results
           path: |
@@ -65,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -81,7 +76,7 @@ jobs:
 
       - name: 📊 Upload coverage to Codecov
         if: matrix.python-version == '3.11'
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: unittests
@@ -89,7 +84,7 @@ jobs:
 
       - name: 📈 Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: test-results-${{ matrix.python-version }}
           path: |
@@ -105,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -115,7 +110,7 @@ jobs:
           safety check --json --output safety-report.json || true
 
       - name: 📊 Upload security scan results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: security-scan
           path: safety-report.json
@@ -160,15 +155,11 @@ jobs:
           outputs: type=docker,dest=/tmp/image.tar
 
       - name: 📦 Upload Docker image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: docker-image
           path: /tmp/image.tar
           retention-days: 1
-
-  # ============================================================================
-  # CONTINUOUS DEPLOYMENT
-  # ============================================================================
 
   deploy-staging:
     name: 🚀 Deploy to Staging
@@ -184,7 +175,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 📦 Download Docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: docker-image
           path: /tmp
@@ -196,11 +187,9 @@ jobs:
         run: |
           echo "🚀 Deploying to staging environment..."
           
-          # Stop existing staging container if running
           docker stop cicd-demo-staging || true
           docker rm cicd-demo-staging || true
           
-          # Run new container
           docker run -d \
             --name cicd-demo-staging \
             --restart unless-stopped \
@@ -208,7 +197,6 @@ jobs:
             -e ENV=staging \
             cicd-demo-app:latest
           
-          # Health check
           echo "⏳ Waiting for application to be ready..."
           for i in {1..30}; do
             if curl -f http://localhost:8001/health >/dev/null 2>&1; then
@@ -240,7 +228,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 📦 Download Docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # ✅ UPDATED FROM v3
         with:
           name: docker-image
           path: /tmp
@@ -252,11 +240,9 @@ jobs:
         run: |
           echo "🌟 Deploying to production environment..."
           
-          # Blue-Green deployment simulation
           docker stop cicd-demo-production || true
           docker rm cicd-demo-production || true
           
-          # Deploy new version
           docker run -d \
             --name cicd-demo-production \
             --restart unless-stopped \
@@ -264,7 +250,6 @@ jobs:
             -e ENV=production \
             cicd-demo-app:latest
           
-          # Health check
           echo "⏳ Waiting for application to be ready..."
           for i in {1..30}; do
             if curl -f http://localhost:3000/health >/dev/null 2>&1; then
@@ -290,10 +275,6 @@ jobs:
           echo "- Version: ${{ github.sha }}"
           echo "- Branch: ${{ github.ref }}"
           echo "- URL: http://localhost:3000"
-
-  # ============================================================================
-  # POST-DEPLOYMENT
-  # ============================================================================
 
   cleanup:
     name: 🧹 Cleanup
