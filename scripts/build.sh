@@ -1,7 +1,4 @@
 
-#!/bin/bash
-# scripts/build.sh - Build Docker image
-
 set -e
 
 echo "🏗️ Building Docker Image..."

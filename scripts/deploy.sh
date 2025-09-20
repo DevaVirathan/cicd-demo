@@ -1,6 +1,3 @@
-#!/bin/bash
-# scripts/deploy.sh - Deploy application
-
 set -e
 
 echo "🚀 Deploying Application..."

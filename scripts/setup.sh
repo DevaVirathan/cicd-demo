@@ -1,6 +1,3 @@
-#!/bin/bash
-# scripts/setup.sh - Environment setup script
-
 set -e  # Exit on error
 
 echo "🚀 Setting up CI/CD Demo Environment..."

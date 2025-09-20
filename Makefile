@@ -1,5 +1,3 @@
-# Makefile for CI/CD Demo
-
 .PHONY: help setup install test lint format build run deploy clean docker-* local-ci
 
 # Colors

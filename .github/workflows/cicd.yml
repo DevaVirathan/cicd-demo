@@ -1,4 +1,3 @@
-# .github/workflows/cicd.yml - FIXED VERSION
 name: CI/CD Pipeline
 
 on:
