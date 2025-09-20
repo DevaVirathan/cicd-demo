@@ -67,29 +67,6 @@ async def get_user(user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
     return UserResponse(**user)
 
-@app.put("/users/{user_id}", response_model=UserResponse)
-async def update_user(user_id: int, updated_user: User = Body(...)):
-    """Update an existing user by ID"""
-    global users_db
-    user = next((u for u in users_db if u["id"] == user_id), None)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Optional: validate age
-    if updated_user.age < 0 or updated_user.age > 150:
-        raise HTTPException(status_code=400, detail="Age must be between 0 and 150")
-
-    # Optional: check for duplicate email (excluding current user)
-    if any(u["email"] == updated_user.email and u["id"] != user_id for u in users_db):
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    # Update the user fields
-    user["name"] = updated_user.name
-    user["email"] = updated_user.email
-    user["age"] = updated_user.age
-
-    return UserResponse(**user)
-
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int):
